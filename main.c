@@ -41,10 +41,11 @@ int main(int argc, char *argv[]) {
         }
         pcap_freealldevs(devs);
         printf("Usage: nothing_detector.exe <interface_name>\n");
+        printf("Try:   nothing_detector.exe \"\\\\.\\USBPcap1\"\n");
         return 0;
     }
 
-    pcap_t *handle = pcap_open_live(argv[1], 65536, 1, 100, errbuf);
+    pcap_t *handle = pcap_open(argv[1], 65536, 1, 100, NULL, errbuf);
     if (!handle) {
         fprintf(stderr, "Cannot open interface: %s\n", errbuf);
         return 1;
