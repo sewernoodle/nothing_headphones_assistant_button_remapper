@@ -18,8 +18,9 @@ jobs:
 
       - name: Install Npcap
         run: |
-          Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-1.79.exe" -OutFile "npcap.exe"
-          Start-Process -FilePath ".\npcap.exe" -ArgumentList "/S" -Wait
+          choco install npcap --yes --no-progress
+          Copy-Item "C:\Windows\System32\Npcap\wpcap.dll" -Destination "."
+          Copy-Item "C:\Windows\System32\Npcap\Packet.dll" -Destination "."
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
