@@ -16,15 +16,25 @@ jobs:
           Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-sdk-1.13.zip" -OutFile "npcap-sdk.zip"
           Expand-Archive "npcap-sdk.zip" -DestinationPath "npcap-sdk"
 
+      - name: Install Npcap
+        run: |
+          Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-1.79.exe" -OutFile "npcap.exe"
+          Start-Process -FilePath ".\npcap.exe" -ArgumentList "/S" -Wait
+
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build
         run: |
           cl /I "npcap-sdk\Include" main.c /link /LIBPATH:"npcap-sdk\Lib\x64" wpcap.lib ws2_32.lib /out:nothing_detector.exe
+          Copy-Item "C:\Windows\System32\Npcap\wpcap.dll" -Destination "."
+          Copy-Item "C:\Windows\System32\Npcap\Packet.dll" -Destination "."
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: nothing_detector
-          path: nothing_detector.exe
+          path: |
+            nothing_detector.exe
+            wpcap.dll
+            Packet.dll
