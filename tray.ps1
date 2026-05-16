@@ -150,7 +150,16 @@ $script:ConfigFile    = Join-Path $script:ConfigDir "config.json"
 $script:AutostartKey  = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $script:AutostartName = "NothingHeadphonesDetector"
 $script:ScriptDir     = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:TrayBat       = Join-Path $script:ScriptDir "tray.bat"
+$script:SelfPs1       = Join-Path $script:ScriptDir "tray.ps1"
+
+# The autostart command launches PowerShell directly (no .bat middleman, which
+# would tear down its own console and could kill the hidden child at login).
+$script:PsExe = Join-Path $PSHOME "powershell.exe"
+if (-not (Test-Path $script:PsExe)) {
+    $script:PsExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+}
+$script:AutostartCmd = "`"$($script:PsExe)`" -NoProfile -ExecutionPolicy Bypass " +
+                       "-WindowStyle Hidden -File `"$($script:SelfPs1)`""
 
 function Save-Config {
     try {
@@ -180,9 +189,20 @@ function Is-AutostartEnabled {
 
 function Enable-Autostart {
     try {
-        Set-ItemProperty -Path $script:AutostartKey -Name $script:AutostartName -Value "`"$($script:TrayBat)`"" -ErrorAction Stop
+        Set-ItemProperty -Path $script:AutostartKey -Name $script:AutostartName -Value $script:AutostartCmd -ErrorAction Stop
         return $true
     } catch { return $false }
+}
+
+# If autostart is on but still points at the old tray.bat entry, silently
+# upgrade it to the direct-PowerShell command.
+function Repair-Autostart {
+    try {
+        $val = Get-ItemPropertyValue -Path $script:AutostartKey -Name $script:AutostartName -ErrorAction Stop
+        if ($val -and $val -ne $script:AutostartCmd) {
+            Set-ItemProperty -Path $script:AutostartKey -Name $script:AutostartName -Value $script:AutostartCmd
+        }
+    } catch {}
 }
 
 function Disable-Autostart {
@@ -613,6 +633,8 @@ $timer.Add_Tick({
 })
 
 # ---- Boot up ---------------------------------------------------------------
+# Upgrade any old tray.bat-based autostart entry to the direct command.
+Repair-Autostart
 Start-Capture
 $ifInfo.Label.Text = "Interface: $($script:Interface)"
 $trayIcon.ShowBalloonTip(2500,
