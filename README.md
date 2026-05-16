@@ -193,10 +193,10 @@ Useful directions if you want to extend it:
 
 ## Credits
 
-All code written by AI (Claude). See the [AI disclosure](#️-ai-disclosure)
-above. The Bluetooth protocol analysis — byte signatures, the AVRCP/HFP
-command decoding, and the `tshark`/USBPcap workaround — was worked out by
-capturing and decoding live traffic from real Nothing Headphones (1).
+All code written by AI (Claude) — see the **AI disclosure** section near the
+top of this README. The Bluetooth protocol analysis — byte signatures, the
+AVRCP/HFP command decoding, and the `tshark`/USBPcap workaround — was worked
+out by capturing and decoding live traffic from real Nothing Headphones (1).
 
 ## License
 
