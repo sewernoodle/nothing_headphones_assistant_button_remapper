@@ -15,7 +15,7 @@ tool can, which makes the voice assistant button usable for:
 - …anything that reacts to a key press
 
 It works by **sniffing the Bluetooth traffic** between your PC and the
-headphones — no firmware modification, no root, no driver hacks.
+headphones.
 
 ---
 
@@ -24,11 +24,6 @@ headphones — no firmware modification, no root, no driver hacks.
 **100% of the code in this repository was written by AI (Claude)** — along
 with the Bluetooth reverse-engineering, the protocol decoding, and the
 debugging.
-
-The human's role was hands-on but not technical: they had the original goal,
-provided the hardware (headphones, USB Bluetooth dongle, PC), ran the packet
-captures and commands the AI asked for, tested each iteration, and picked
-between options the AI presented.
 
 As with **any** code — AI-written or not — review it before you run it.
 It is plain-text PowerShell with no obfuscation and no network access, so it
