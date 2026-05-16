@@ -1,0 +1,20 @@
+# Local Claude / editor settings
+.claude/
+
+# Wireshark capture files
+*.pcap
+*.pcapng
+
+# Build artifacts from the abandoned C approach
+*.exe
+*.dll
+*.obj
+
+# Temp files the detector writes at runtime
+nothing_detector_*.txt
+nothing_tray_*.txt
+nothing_*_pipe_*.bat
+
+# OS noise
+Thumbs.db
+desktop.ini
