@@ -424,6 +424,9 @@ $container.Controls.Add($changeKey.Panel)
 $pauseItem = New-MenuItem -text "Pause" -right ""
 $pauseItem.Panel.Tag = "pause"
 $container.Controls.Add($pauseItem.Panel)
+# NOTE: no .GetNewClosure() here - this handler writes $script: variables, and
+# GetNewClosure would redirect those writes into a private closure scope that
+# the capture timer never reads.
 $togglePauseClick = {
     $script:paused = -not $script:paused
     if ($script:paused) {
@@ -436,7 +439,7 @@ $togglePauseClick = {
         $trayIcon.Text = "Nothing Headphones - tap = '$($script:currentKey)'"
     }
     $popup.Hide()
-}.GetNewClosure()
+}
 $pauseItem.Panel.Add_Click($togglePauseClick)
 $pauseItem.Label.Add_Click($togglePauseClick)
 $pauseItem.Right.Add_Click($togglePauseClick)
@@ -541,6 +544,10 @@ function Show-ChangeKeyDialog {
         return $b
     }
 
+    # NOTE: no .GetNewClosure() here - this handler writes $script:keyCodes /
+    # $script:currentKey. GetNewClosure would send those writes into a private
+    # scope, leaving the capture timer using the old key. The dialog is modal
+    # (ShowDialog blocks below), so $tb and $f are still in scope when this runs.
     $okClick = {
         $new = $tb.Text.Trim()
         try {
@@ -555,7 +562,7 @@ function Show-ChangeKeyDialog {
         } catch {
             [System.Windows.Forms.MessageBox]::Show("Invalid key '$new': $_", "Nothing Headphones") | Out-Null
         }
-    }.GetNewClosure()
+    }
 
     $ok = New-StyledButton -text "Save" -bg $Theme.Accent -fg $Theme.AccentText -x 175 -onClick $okClick
     $cancel = New-StyledButton -text "Cancel" -bg ([System.Drawing.Color]::FromArgb(70,70,75)) -fg $Theme.TextPrimary -x 270 -onClick { $f.Close() }
