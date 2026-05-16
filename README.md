@@ -17,6 +17,8 @@ tool can, which makes the voice assistant button usable for:
 It works by **sniffing the Bluetooth traffic** between your PC and the
 headphones.
 
+![The system tray menu](tray-menu.png)
+
 ---
 
 ## ⚠️ AI disclosure
