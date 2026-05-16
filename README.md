@@ -1,4 +1,4 @@
-# Nothing Headphones (1) — Bluetooth Button Click Detector
+# Nothing Headphones (1) — voice assistant button remapper
 
 Detect button presses on **Nothing Headphones (1)** in real time on Windows, and
 map the **voice assistant button** to any keystroke you want.
