@@ -172,6 +172,10 @@ $script:PsExe = Join-Path $PSHOME "powershell.exe"
 if (-not (Test-Path $script:PsExe)) {
     $script:PsExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 }
+# The autostart task launches via this VBScript so PowerShell starts with no
+# console-window flash (wscript.exe is windowless and starts PS hidden).
+$script:WScriptExe  = Join-Path $env:SystemRoot "System32\wscript.exe"
+$script:LauncherVbs = Join-Path $script:ScriptDir "launch-hidden.vbs"
 
 function Save-Config {
     try {
@@ -221,10 +225,11 @@ function Invoke-ElevatedPS {
 }
 
 function Enable-Autostart {
-    $taskArg = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $script:SelfPs1 + '"'
+    # Task runs wscript.exe on the VBScript launcher (flash-free start).
+    $taskArg = '"' + $script:LauncherVbs + '"'
     $body = @"
 `$ErrorActionPreference = 'Stop'
-`$a = New-ScheduledTaskAction -Execute '$($script:PsExe)' -Argument '$taskArg'
+`$a = New-ScheduledTaskAction -Execute '$($script:WScriptExe)' -Argument '$taskArg'
 `$t = New-ScheduledTaskTrigger -AtLogOn -User '$env:USERNAME'
 try { `$t.Delay = 'PT30S' } catch {}
 `$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
