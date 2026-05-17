@@ -9,6 +9,20 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+
+# Minimal startup logging so autostart failures are diagnosable. The log lands
+# in %APPDATA%\NothingHeadphonesDetector\startup.log.
+$script:LogFile = Join-Path $env:APPDATA "NothingHeadphonesDetector\startup.log"
+function Write-Log {
+    param([string]$msg)
+    try {
+        $d = Split-Path $script:LogFile
+        if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+        Add-Content -LiteralPath $script:LogFile -Value ("[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg)
+    } catch {}
+}
+Write-Log "tray.ps1 launched (PID $PID)"
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -147,19 +161,17 @@ function Find-BluetoothInterface {
 # ---- Config persistence + autostart ---------------------------------------
 $script:ConfigDir     = Join-Path $env:APPDATA "NothingHeadphonesDetector"
 $script:ConfigFile    = Join-Path $script:ConfigDir "config.json"
-$script:AutostartKey  = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-$script:AutostartName = "NothingHeadphonesDetector"
 $script:ScriptDir     = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:SelfPs1       = Join-Path $script:ScriptDir "tray.ps1"
+$script:TaskName      = "NothingHeadphonesDetector"
+# Older versions registered autostart via this Run-key value; we migrate off it.
+$script:LegacyRunKey  = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$script:LegacyRunName = "NothingHeadphonesDetector"
 
-# The autostart command launches PowerShell directly (no .bat middleman, which
-# would tear down its own console and could kill the hidden child at login).
 $script:PsExe = Join-Path $PSHOME "powershell.exe"
 if (-not (Test-Path $script:PsExe)) {
     $script:PsExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 }
-$script:AutostartCmd = "`"$($script:PsExe)`" -NoProfile -ExecutionPolicy Bypass " +
-                       "-WindowStyle Hidden -File `"$($script:SelfPs1)`""
 
 function Save-Config {
     try {
@@ -180,36 +192,44 @@ function Load-Config {
     return $null
 }
 
+# Autostart is a Scheduled Task with an "at log on" trigger and a 30-second
+# delay. The Run key fires too early in the login sequence (before the shell
+# and the USBPcap driver are ready); a delayed task launches once things have
+# settled, which is far more reliable.
 function Is-AutostartEnabled {
-    try {
-        $val = Get-ItemPropertyValue -Path $script:AutostartKey -Name $script:AutostartName -ErrorAction Stop
-        return -not [string]::IsNullOrEmpty($val)
-    } catch { return $false }
+    try { return ($null -ne (Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue)) }
+    catch { return $false }
 }
 
 function Enable-Autostart {
     try {
-        Set-ItemProperty -Path $script:AutostartKey -Name $script:AutostartName -Value $script:AutostartCmd -ErrorAction Stop
+        $arg = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $script:SelfPs1 + '"'
+        $action  = New-ScheduledTaskAction -Execute $script:PsExe -Argument $arg
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+        try { $trigger.Delay = 'PT30S' } catch {}
+        $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+        $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+        Register-ScheduledTask -TaskName $script:TaskName -Action $action -Trigger $trigger `
+            -Settings $settings -Principal $principal -Force -ErrorAction Stop | Out-Null
         return $true
     } catch { return $false }
-}
-
-# If autostart is on but still points at the old tray.bat entry, silently
-# upgrade it to the direct-PowerShell command.
-function Repair-Autostart {
-    try {
-        $val = Get-ItemPropertyValue -Path $script:AutostartKey -Name $script:AutostartName -ErrorAction Stop
-        if ($val -and $val -ne $script:AutostartCmd) {
-            Set-ItemProperty -Path $script:AutostartKey -Name $script:AutostartName -Value $script:AutostartCmd
-        }
-    } catch {}
 }
 
 function Disable-Autostart {
+    try { Unregister-ScheduledTask -TaskName $script:TaskName -Confirm:$false -ErrorAction Stop; return $true }
+    catch { return $false }
+}
+
+# Migrate away from the old Run-key autostart: delete the stale Run entry, and
+# if the user had autostart enabled that way, recreate it as a scheduled task.
+function Repair-Autostart {
     try {
-        Remove-ItemProperty -Path $script:AutostartKey -Name $script:AutostartName -ErrorAction Stop
-        return $true
-    } catch { return $false }
+        $old = Get-ItemPropertyValue -Path $script:LegacyRunKey -Name $script:LegacyRunName -ErrorAction SilentlyContinue
+        if ($old) {
+            Remove-ItemProperty -Path $script:LegacyRunKey -Name $script:LegacyRunName -ErrorAction SilentlyContinue
+            if (-not (Is-AutostartEnabled)) { Enable-Autostart | Out-Null }
+        }
+    } catch {}
 }
 
 if (-not $PSBoundParameters.ContainsKey('Key')) {
@@ -649,8 +669,10 @@ $trayIcon.ShowBalloonTip(2500,
     "Running. Tap headphone = '$($script:currentKey)'. Click the tray icon for options.",
     "Info")
 
+Write-Log "tray ready - entering message loop (interface $($script:Interface), key $($script:currentKey))"
 $timer.Start()
 [System.Windows.Forms.Application]::Run()
 
+Write-Log "tray exited"
 $timer.Stop()
 Stop-Capture
