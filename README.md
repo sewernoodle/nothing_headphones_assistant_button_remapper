@@ -92,7 +92,8 @@ That's it. No build step.
 
 ### Tray app (recommended)
 
-Double-click **`tray.bat`**. A headphones icon appears in your system tray.
+Double-click **`tray.bat`** (or **`launch-hidden.vbs`** for a completely
+flash-free start). A headphones icon appears in your system tray.
 
 Click the icon for a menu:
 
@@ -103,6 +104,13 @@ Click the icon for a menu:
 
 Your key choice is saved to `%APPDATA%\NothingHeadphonesDetector\config.json`
 and restored on the next launch.
+
+**About "Start with Windows":** capturing USB traffic requires administrator
+rights, so autostart is registered as a Scheduled Task that runs elevated —
+this means **no UAC prompts at boot**. Creating that task needs elevation, so
+you'll see **one** UAC prompt when you enable the toggle; every boot afterwards
+is silent. The task launches 30 seconds after login (once the desktop and
+USBPcap driver have settled) for reliability.
 
 ### Command-line version
 
@@ -174,6 +182,7 @@ the interface: `run.bat -Interface "\\.\USBPcap2"`.
 |---|---|
 | `tray.ps1` | The tray application (UI, key mapping, autostart) |
 | `tray.bat` | Launcher for the tray app |
+| `launch-hidden.vbs` | Flash-free launcher (used by autostart; windowless start) |
 | `detector.ps1` | Command-line detector (live log of every button) |
 | `run.bat` | Launcher for the command-line detector |
 
