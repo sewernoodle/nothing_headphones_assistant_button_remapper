@@ -192,44 +192,65 @@ function Load-Config {
     return $null
 }
 
-# Autostart is a Scheduled Task with an "at log on" trigger and a 30-second
-# delay. The Run key fires too early in the login sequence (before the shell
-# and the USBPcap driver are ready); a delayed task launches once things have
-# settled, which is far more reliable.
+# Autostart is a Scheduled Task that runs WITH HIGHEST PRIVILEGES, with an
+# "at log on" trigger and a 30-second delay. Running elevated means the
+# tshark/USBPcap capture it spawns is also elevated - so there are NO UAC
+# prompts at boot (USBPcap capture otherwise prompts for elevation).
+# Creating an elevated task itself requires elevation, so enabling/disabling
+# autostart runs a one-shot elevated helper: the user approves ONE UAC prompt
+# when toggling the setting, and every boot afterwards is prompt-free.
 function Is-AutostartEnabled {
     try { return ($null -ne (Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue)) }
     catch { return $false }
 }
 
-function Enable-Autostart {
+# Run a block of PowerShell elevated (triggers one UAC prompt).
+function Invoke-ElevatedPS {
+    param([string]$body)
+    $helper = Join-Path $env:TEMP ("nhd_admin_" + [Guid]::NewGuid().ToString('N') + ".ps1")
+    Set-Content -LiteralPath $helper -Value $body -Encoding UTF8
     try {
-        $arg = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $script:SelfPs1 + '"'
-        $action  = New-ScheduledTaskAction -Execute $script:PsExe -Argument $arg
-        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-        try { $trigger.Delay = 'PT30S' } catch {}
-        $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-        $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
-        Register-ScheduledTask -TaskName $script:TaskName -Action $action -Trigger $trigger `
-            -Settings $settings -Principal $principal -Force -ErrorAction Stop | Out-Null
+        Start-Process -FilePath $script:PsExe -Verb RunAs -WindowStyle Hidden -Wait `
+            -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-File",$helper -ErrorAction Stop
         return $true
-    } catch { return $false }
+    } catch {
+        return $false   # user declined the UAC prompt
+    } finally {
+        Remove-Item -LiteralPath $helper -ErrorAction SilentlyContinue
+    }
+}
+
+function Enable-Autostart {
+    $taskArg = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $script:SelfPs1 + '"'
+    $body = @"
+`$ErrorActionPreference = 'Stop'
+`$a = New-ScheduledTaskAction -Execute '$($script:PsExe)' -Argument '$taskArg'
+`$t = New-ScheduledTaskTrigger -AtLogOn -User '$env:USERNAME'
+try { `$t.Delay = 'PT30S' } catch {}
+`$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+`$p = New-ScheduledTaskPrincipal -UserId '$env:USERNAME' -LogonType Interactive -RunLevel Highest
+Register-ScheduledTask -TaskName '$($script:TaskName)' -Action `$a -Trigger `$t -Settings `$s -Principal `$p -Force | Out-Null
+"@
+    Invoke-ElevatedPS $body | Out-Null
+    return (Is-AutostartEnabled)
 }
 
 function Disable-Autostart {
-    try { Unregister-ScheduledTask -TaskName $script:TaskName -Confirm:$false -ErrorAction Stop; return $true }
-    catch { return $false }
+    # A non-elevated task removes without elevation; an elevated (Highest)
+    # task needs elevation, so fall back to the elevated helper if needed.
+    try {
+        Unregister-ScheduledTask -TaskName $script:TaskName -Confirm:$false -ErrorAction Stop
+        return $true
+    } catch {
+        Invoke-ElevatedPS ("Unregister-ScheduledTask -TaskName '$($script:TaskName)' -Confirm:`$false -ErrorAction SilentlyContinue") | Out-Null
+        return (-not (Is-AutostartEnabled))
+    }
 }
 
-# Migrate away from the old Run-key autostart: delete the stale Run entry, and
-# if the user had autostart enabled that way, recreate it as a scheduled task.
+# Remove any stale Run-key entry left by older versions (autostart is a task now).
 function Repair-Autostart {
-    try {
-        $old = Get-ItemPropertyValue -Path $script:LegacyRunKey -Name $script:LegacyRunName -ErrorAction SilentlyContinue
-        if ($old) {
-            Remove-ItemProperty -Path $script:LegacyRunKey -Name $script:LegacyRunName -ErrorAction SilentlyContinue
-            if (-not (Is-AutostartEnabled)) { Enable-Autostart | Out-Null }
-        }
-    } catch {}
+    try { Remove-ItemProperty -Path $script:LegacyRunKey -Name $script:LegacyRunName -ErrorAction SilentlyContinue }
+    catch {}
 }
 
 if (-not $PSBoundParameters.ContainsKey('Key')) {
